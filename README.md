@@ -1,363 +1,635 @@
 # Multi-Window Media Sequencer with Synchronized Playback
 
-A full-stack, real-time media sequencing and display system built with **Golang (Backend)**, **PostgreSQL (Database)**, **Gorilla WebSocket (Real-time Broadcast Hub)**, and **React + Vite (Frontend)**.
+A full-stack real-time media sequencing system for multiple independent
+display windows.
 
-The system powers multiple independent digital display windows that continuously loop their own configured media playlists (images, videos, blank/intermission) over a **5-hour deterministic cycle** (18,000 seconds), accompanied by a **real-time temporary synchronization override engine**.
+Each window maintains its own ordered playlist and continuously plays it
+using a deterministic **5-hour (18,000-second) cycle**. A
+synchronization command temporarily overrides all windows with a
+selected media item for a configured duration, then each window resumes
+its normal deterministic playback without modifying its stored playlist.
 
----
+## Live Deployment
 
-## Architecture Diagram
+-   **Frontend:** https://multi-window-media-sequencer-1.onrender.com
+-   **Backend:** https://multi-window-media-sequencer-2vjr.onrender.com
+-   **Backend health:**
+    https://multi-window-media-sequencer-2vjr.onrender.com/health
+-   **Repository:**
+    https://github.com/harshit-mangal/multi-window-media-sequencer
 
-```mermaid
-graph TD
-    Client1[Display Window 1] -->|WebSocket & REST| Server[Go Backend Hub]
-    Client2[Display Window 2] -->|WebSocket & REST| Server
-    Client3[Display Window 3] -->|WebSocket & REST| Server
-    Client4[Display Window 4] -->|WebSocket & REST| Server
-    Admin[Admin / Controls] -->|POST /api/sync| Server
+The frontend and backend are deployed as separate Render Web Services,
+with PostgreSQL used for persistent state.
 
-    subgraph Go Backend
-        Server --> Router[Gin HTTP Router]
-        Server --> WSHub[Gorilla WebSocket Hub]
-        Server --> Engine[Deterministic 5h Playback Engine]
-        Server --> SyncEngine[Temporary Sync Coordinator]
-    end
-
-    Router --> Repos[Repository Layer]
-    SyncEngine --> Repos
-    Repos --> Pool[pgx Connection Pool]
-    Pool --> PostgreSQL[(PostgreSQL Database)]
-```
-
----
+> Render's free web services can spin down after inactivity, so the
+> first request after inactivity may have a cold-start delay.
 
 ## Features
 
-1. **Independent Multi-Window Displays**:
-   - Manages multiple concurrent display windows (Window 1, Window 2, Window 3, Window 4).
-   - Each window maintains its own unique, ordered playlist of media assets.
-2. **Deterministic 5-Hour Playback Cycle**:
-   - Zero per-second database writes. Playback position is derived purely from server clock, 5-hour cycle boundaries (18,000s), and cumulative item durations.
-   - Handles continuous looping within cycles and across cycle transitions seamlessly.
-3. **Non-Destructive Temporary Synchronization Override**:
-   - Triggers temporary synchronization of any selected media asset across all display windows.
-   - Synchronized using absolute server timestamps (`startAt`, `endAt`) over WebSocket to guarantee simultaneous screen transition across clients.
-   - Never alters or deletes underlying window playlists; automatically returns to normal playback position upon sync expiration.
-4. **Late Client & Page Refresh Recovery**:
-   - Clients connecting late or refreshing during an active sync query `GET /api/sync/current` to immediately reconstruct active override state.
-5. **Dynamic Playlist Reordering & Updates**:
-   - Real-time modifications to window playlists broadcast `PLAYLIST_UPDATED` over WebSocket, instantly updating displays without browser reload.
-6. **Multi-Format Media Player**:
-   - Supports high-resolution images with timed duration, auto-syncing videos, and explicit blank screens.
+### Independent multi-window playback
 
----
+-   Four independently configured display windows.
+-   Each window has its own ordered playlist.
+-   Windows can have different media, ordering, and durations.
+-   Normal playback continues independently.
+
+### Deterministic 5-hour playback
+
+The playback cycle is fixed at:
+
+``` text
+5 hours = 18,000 seconds
+```
+
+Playback state is derived from server time and playlist configuration
+instead of being written to PostgreSQL every second.
+
+Conceptually:
+
+``` text
+CycleNumber  = floor(CurrentUnixTimestamp / 18000)
+CycleElapsed = CurrentUnixTimestamp mod 18000
+LoopElapsed  = CycleElapsed mod TotalPlaylistDuration
+```
+
+The active media item is resolved from cumulative playlist durations.
+
+### Temporary synchronized playback
+
+A selected media item can be synchronized across all windows.
+
+The backend: 1. Creates a synchronization event. 2. Calculates a future
+`startAt` using a small network buffer. 3. Calculates `endAt`. 4.
+Broadcasts the event through WebSocket. 5. Clients switch at the shared
+server-defined `startAt`. 6. Clients leave the override at `endAt` and
+return to normal playback.
+
+Synchronization does not reorder, delete, or replace stored playlist
+items.
+
+### Refresh and late-client recovery
+
+Clients can call:
+
+``` text
+GET /api/sync/current
+```
+
+to reconstruct an active synchronization event after a refresh or late
+connection.
+
+### Dynamic playlist updates
+
+Playlist changes are persisted and broadcast through:
+
+``` text
+PLAYLIST_UPDATED
+```
+
+so connected displays can update without a full browser reload.
+
+### Media support
+
+The player supports: - Images - Videos - Explicit blank/intermission
+items
+
+### Persistent storage
+
+PostgreSQL stores: - Windows - Media assets - Playlist items -
+Synchronization events
+
+Migrations and seed data are included.
+
+## Architecture
+
+``` mermaid
+graph TD
+    Browser[React Display / Admin UI]
+    Browser -->|REST API| Backend[Go Backend]
+    Browser -->|WebSocket| Backend
+    Backend --> Router[HTTP Router]
+    Backend --> WSHub[WebSocket Hub]
+    Backend --> Playback[Deterministic Playback Service]
+    Backend --> Sync[Synchronization Service]
+    Router --> Services[Application Services]
+    Sync --> Services
+    Playback --> Services
+    Services --> Repositories[Repository Layer]
+    Repositories --> Pool[pgx Connection Pool]
+    Pool --> PostgreSQL[(PostgreSQL)]
+```
 
 ## Technology Stack
 
-- **Backend**: Golang 1.24, Gin Web Framework, Gorilla WebSocket, pgx/v5 PostgreSQL driver, godotenv.
-- **Frontend**: React 19, Vite 8, Tailwind CSS v4, Lucide Icons.
-- **Database**: PostgreSQL 16 (persistent relational storage with transactions and indexes).
-- **Deployment & Orchestration**: Docker, Docker Compose, Nginx.
+### Backend
 
----
+-   Go 1.27.1+
+-   PostgreSQL
+-   pgx/v5
+-   Gorilla WebSocket
+-   godotenv
+-   Go HTTP server
+-   Handler / service / repository architecture
 
-## Folder Structure
+### Frontend
 
-```
+-   React 19
+-   Vite 8
+-   Tailwind CSS v4
+-   Lucide Icons
+-   REST API client
+-   WebSocket client
+
+### Infrastructure
+
+-   Docker
+-   Docker Compose
+-   Nginx
+-   Render
+-   PostgreSQL
+
+## Project Structure
+
+``` text
+multi-window-media-sequencer/
 ├── backend/
-│   ├── cmd/
-│   │   └── server/
-│   │       └── main.go                 # Application entrypoint & graceful shutdown
+│   ├── cmd/server/main.go
 │   ├── internal/
-│   │   ├── config/                     # Environment configuration loader
-│   │   ├── database/                   # Connection pool, migrations & seed manager
-│   │   ├── handlers/                   # REST API controllers & router
-│   │   ├── middleware/                 # CORS & logging middleware
-│   │   ├── models/                     # Domain structs, DTOs & error formats
-│   │   ├── repository/                 # PostgreSQL database queries (pgx)
-│   │   ├── services/                   # Business logic (Playback, Sync, Window, Media)
-│   │   └── websocket/                  # Gorilla WebSocket hub, client pumps & events
-│   ├── migrations/                     # SQL DDL schemas
-│   ├── seed/                           # SQL seed data (M1-M14, Windows 1-4)
-│   ├── tests/                          # Automated unit & integration tests
-│   ├── postman_collection.json         # Postman API test collection
-│   ├── Dockerfile                      # Multi-stage Go Dockerfile
-│   └── .env.example                    # Backend environment template
+│   │   ├── config/
+│   │   ├── database/
+│   │   ├── handlers/
+│   │   ├── middleware/
+│   │   ├── models/
+│   │   ├── repository/
+│   │   ├── services/
+│   │   └── websocket/
+│   ├── migrations/
+│   ├── seed/
+│   ├── tests/
+│   ├── postman_collection.json
+│   ├── Dockerfile
+│   ├── go.mod
+│   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── components/                 # MediaPlayer, MediaWindow, WindowGrid, SyncControls, PlaylistEditor
-│   │   ├── hooks/                      # useWebSocket, useSync, usePlaylist
-│   │   ├── services/                   # REST API client & WebSocket manager
-│   │   ├── utils/                      # Client deterministic 5-hour playback engine
-│   │   ├── App.jsx                     # Main dashboard layout
-│   │   ├── main.jsx                    # React entrypoint
-│   │   └── index.css                   # Tailwind styling
-│   ├── nginx.conf                      # Production Nginx reverse proxy configuration
-│   ├── Dockerfile                      # Multi-stage Node + Nginx Dockerfile
-│   └── .env.example                    # Frontend environment template
-├── docker-compose.yml                  # Multi-container orchestration (DB + Backend + Frontend)
-├── render.yaml                         # Cloud deployment blueprint
-└── README.md                           # Documentation
+│   │   ├── assets/
+│   │   ├── components/
+│   │   ├── hooks/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   ├── public/
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── package.json
+│   └── .env.example
+├── docker-compose.yml
+├── render.yaml
+├── README.md
+└── .gitignore
 ```
 
----
+## Database Model
 
-## Database Schema
+### `windows`
 
-```sql
-CREATE TABLE windows (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+Stores display-window configuration.
 
-CREATE TABLE media (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(150) NOT NULL,
-    type VARCHAR(20) NOT NULL CHECK (type IN ('image', 'video', 'blank')),
-    url TEXT NOT NULL,
-    duration INT NOT NULL CHECK (duration > 0),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE playlist_items (
-    id SERIAL PRIMARY KEY,
-    window_id INT NOT NULL REFERENCES windows(id) ON DELETE CASCADE,
-    media_id INT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
-    position INT NOT NULL CHECK (position >= 0),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_window_position UNIQUE (window_id, position)
-);
-
-CREATE TABLE sync_events (
-    id VARCHAR(64) PRIMARY KEY,
-    media_id INT NOT NULL REFERENCES media(id) ON DELETE CASCADE,
-    duration INT NOT NULL CHECK (duration > 0),
-    start_at TIMESTAMPTZ NOT NULL,
-    end_at TIMESTAMPTZ NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'active',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
+``` text
+id
+name
+created_at
+updated_at
 ```
 
----
+### `media`
 
-## Playback & Synchronization Model
+Stores media assets.
 
-### 1. Deterministic 5-Hour Cycle Playback
-Instead of running expensive database update queries every second across thousands of screens, playback state is computed statelessly using the deterministic formula:
+``` text
+id
+name
+type
+url
+duration
+created_at
+updated_at
+```
 
-$$\text{CycleDuration} = 18000 \text{ seconds (5 hours)}$$
-$$\text{CycleNumber} = \lfloor \text{CurrentUnixTimestamp} / 18000 \rfloor$$
-$$\text{CycleElapsed} = \text{CurrentUnixTimestamp} \pmod{18000}$$
-$$\text{LoopElapsed} = \text{CycleElapsed} \pmod{\sum \text{duration}(M_i)}$$
+Supported types:
 
-The active item $M_k$ is resolved by finding:
-$$\sum_{i=0}^{k-1} d_i \le \text{LoopElapsed} < \sum_{i=0}^{k} d_i$$
+``` text
+image
+video
+blank
+```
 
-### 2. Synchronization Temporary Override
-1. When a user triggers `POST /api/sync`:
-   - Server calculates a synchronized future start time `startAt = now + 2s` (network latency buffer) and `endAt = startAt + duration`.
-   - Broadcasts `SYNC_START` event containing target media details and `startAt`/`endAt`.
-2. All clients switch display to the synchronized media exactly at `startAt`.
-3. Upon reaching `endAt`, clients automatically discard the temporary override and resume their deterministic playlist position.
+### `playlist_items`
 
----
+Associates media with windows and preserves ordering.
 
-## REST API Specification
+``` text
+id
+window_id
+media_id
+position
+created_at
+updated_at
+```
+
+### `sync_events`
+
+Stores temporary synchronization events.
+
+``` text
+id
+media_id
+duration
+start_at
+end_at
+status
+created_at
+```
+
+## REST API
 
 ### Windows
 
-#### `GET /api/windows`
-Fetch all windows and their playlists.
-- **Response `200 OK`**:
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "Window 1 - Main Stage Left",
-      "playlist": [
-        {
-          "id": 1,
-          "windowId": 1,
-          "mediaId": 1,
-          "position": 0,
-          "media": { "id": 1, "name": "Cyberpunk City", "type": "image", "duration": 10 }
-        }
-      ]
-    }
-  ]
-}
-```
+`GET /api/windows`\
+Returns all configured windows and playlists.
 
-#### `GET /api/windows/:id`
-Fetch single window with calculated playback state.
-- **Response `200 OK`**:
-```json
-{
-  "data": {
-    "window": { "id": 1, "name": "Window 1" },
-    "playbackState": {
-      "cycleNumber": 0,
-      "cycleElapsedSec": 124,
-      "currentItemIndex": 1,
-      "itemElapsedSec": 4,
-      "itemRemainingSec": 11,
-      "isSyncOverride": false
-    }
-  }
-}
-```
+`GET /api/windows/:id`\
+Returns one window and its calculated playback state.
 
 ### Playlists
 
-#### `POST /api/windows/:id/playlist`
-Append or insert media into window playlist.
-- **Request Body**:
-```json
+`POST /api/windows/:id/playlist`
+
+``` json
 {
   "mediaId": 4,
   "position": 2
 }
 ```
 
-#### `PUT /api/windows/:id/playlist/:itemId`
-Reorder position or change media.
-- **Request Body**:
-```json
+`PUT /api/windows/:id/playlist/:itemId`
+
+``` json
 {
   "position": 0
 }
 ```
 
-#### `DELETE /api/windows/:id/playlist/:itemId`
-Delete item from playlist.
+`DELETE /api/windows/:id/playlist/:itemId`
 
 ### Media
 
-- `GET /api/media` - List all media assets.
-- `POST /api/media` - Create new media asset (`name`, `type`, `url`, `duration`).
-- `DELETE /api/media/:id` - Delete media asset.
+`GET /api/media`
+
+`POST /api/media`
+
+``` json
+{
+  "name": "Example Image",
+  "type": "image",
+  "url": "https://example.com/image.jpg",
+  "duration": 10
+}
+```
+
+`DELETE /api/media/:id`
 
 ### Synchronization
 
-#### `POST /api/sync`
-Trigger temporary synchronized playback override across all displays.
-- **Request Body**:
-```json
+`POST /api/sync`
+
+``` json
 {
   "mediaId": 2,
   "duration": 20
 }
 ```
-- **Response `200 OK`**:
-```json
-{
-  "data": {
-    "id": "c7112028-eb82-4fa1-8ca6-d6e326aaae4e",
-    "mediaId": 2,
-    "duration": 20,
-    "startAt": "2026-09-12T12:00:02Z",
-    "endAt": "2026-09-12T12:00:22Z",
-    "status": "active"
-  }
-}
-```
 
-#### `GET /api/sync/current`
-Get currently active sync state (used by refreshed or late-joining clients).
-- **Response `200 OK`**:
-```json
-{
-  "data": {
-    "active": true,
-    "syncEvent": { ... },
-    "remainingSec": 14,
-    "serverTime": "2026-09-12T12:00:08Z"
-  }
-}
-```
+`GET /api/sync/current`\
+Returns the active synchronization state, if any.
 
----
+`GET /health`\
+Backend health check.
 
 ## WebSocket Events
 
-| Event Type | Direction | Description |
-|---|---|---|
-| `SYNC_START` | Server → Client | Broadcasts start of temporary sync override with `startAt` and `endAt` |
-| `SYNC_END` | Server → Client | Broadcasts expiration of sync override |
-| `PLAYLIST_UPDATED` | Server → Client | Broadcasts playlist change for specific `windowId` |
+  -----------------------------------------------------------------------
+  Event                   Direction               Purpose
+  ----------------------- ----------------------- -----------------------
+  `SYNC_START`            Server → Client         Starts a synchronized
+                                                  temporary override
 
----
+  `SYNC_END`              Server → Client         Ends the
+                                                  synchronization
+                                                  override
 
-## Local Setup & Quick Start
+  `PLAYLIST_UPDATED`      Server → Client         Notifies clients of
+                                                  playlist changes
+  -----------------------------------------------------------------------
 
-### 1. Using Docker Compose (Recommended)
+## Local Development
 
-Run the complete stack (PostgreSQL + Go Backend + React Frontend + Nginx) with one command:
+### Prerequisites
 
-```bash
+-   Go 1.27.1+
+-   Node.js 20+
+-   Docker Desktop
+-   Docker Compose
+-   PostgreSQL 14+ if running PostgreSQL manually
+
+### Recommended: Docker Compose
+
+From the repository root:
+
+``` bash
 docker compose up --build
 ```
 
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend REST & WS: [http://localhost:8080](http://localhost:8080)
-- PostgreSQL: `localhost:5432`
+Local services:
 
----
+``` text
+Frontend:   http://localhost:3000
+Backend:    http://localhost:8080
+PostgreSQL: localhost:5432
+```
 
-### 2. Manual Local Setup
+### Run backend manually
 
-#### Prerequisites
-- Go 1.22+
-- Node.js 20+
-- PostgreSQL 14+
+``` bash
+cd backend
+cp .env.example .env
+go run cmd/server/main.go
+```
 
-#### Backend Setup
-1. Create PostgreSQL database:
-   ```bash
-   createdb mediasequencer
-   ```
-2. Navigate to backend and copy environment:
-   ```bash
-   cd backend
-   cp .env.example .env
-   ```
-3. Run backend tests:
-   ```bash
-   go test -v ./tests/...
-   ```
-4. Start backend server (auto-runs migrations and sample seeds):
-   ```bash
-   go run cmd/server/main.go
-   ```
+The backend attempts to connect to PostgreSQL, run migrations, seed
+initial data, start the WebSocket hub, and start the HTTP server.
 
-#### Frontend Setup
-1. Navigate to frontend directory:
-   ```bash
-   cd frontend
-   npm install
-   ```
-2. Start Vite development server:
-   ```bash
-   npm run dev
-   ```
-3. Open [http://localhost:5173](http://localhost:5173).
+### Run backend tests
 
----
+``` bash
+cd backend
+go test -v ./tests/...
+```
 
-## Postman Collection
+### Run frontend manually
 
-Import `backend/postman_collection.json` into Postman to test all REST endpoints with sample payloads.
+``` bash
+cd frontend
+npm install
+npm run dev
+```
 
----
+Vite normally serves the frontend at:
 
-## Assumptions & Trade-offs
+``` text
+http://localhost:5173
+```
 
-1. **Deterministic Playback Calculation**: We deliberately avoided writing state updates to PostgreSQL on every tick (second) to prevent database I/O bottlenecks. State is calculated purely as a function of time and playlist configuration.
-2. **Synchronized Start Buffer**: `SYNC_START` uses a configurable 2-second future start buffer (`startAt`) to account for network transmission latency between geographically distributed displays.
-3. **Non-Destructive Overrides**: Synchronization acts as a display filter rather than mutating stored playlists, guaranteeing zero data loss or sequence drift after sync ends.
+## Environment Variables
+
+### Backend
+
+Example local configuration:
+
+``` env
+PORT=8080
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/mediasequencer?sslmode=disable
+ALLOWED_ORIGINS=*
+SYNC_BUFFER_SECONDS=2
+CYCLE_DURATION_SECONDS=18000
+```
+
+Production database credentials must be supplied by the hosting platform
+and must not be committed to Git.
+
+### Frontend
+
+Local:
+
+``` env
+VITE_API_URL=http://localhost:8080/api
+VITE_WS_URL=ws://localhost:8080/ws
+```
+
+Production:
+
+``` env
+VITE_API_URL=https://multi-window-media-sequencer-2vjr.onrender.com/api
+VITE_WS_URL=wss://multi-window-media-sequencer-2vjr.onrender.com/ws
+```
+
+The React application reads these values through Vite's
+`import.meta.env` configuration.
+
+## Production Deployment
+
+The production deployment uses three logical components:
+
+``` text
+React + Nginx
+      |
+      | HTTPS / WSS
+      v
+Go Backend
+      |
+      v
+PostgreSQL
+```
+
+### Frontend Render service
+
+``` text
+Language: Docker
+Root Directory: frontend
+Dockerfile Path: Dockerfile
+```
+
+Production variables:
+
+``` text
+VITE_API_URL=https://multi-window-media-sequencer-2vjr.onrender.com/api
+VITE_WS_URL=wss://multi-window-media-sequencer-2vjr.onrender.com/ws
+```
+
+Nginx serves the compiled React SPA and provides SPA route fallback.
+
+### Backend Render service
+
+``` text
+Language: Docker
+Root Directory: backend
+Dockerfile Path: Dockerfile
+```
+
+The backend receives its production `DATABASE_URL` from the Render
+PostgreSQL service and uses the platform-provided `PORT`.
+
+## Docker Architecture
+
+### Backend
+
+Multi-stage build:
+
+``` text
+Go build stage
+      ↓
+Compiled Linux binary
+      ↓
+Alpine runtime image
+```
+
+### Frontend
+
+Multi-stage build:
+
+``` text
+Node build stage
+      ↓
+Vite production bundle
+      ↓
+Nginx runtime image
+```
+
+## Seed Data
+
+The repository includes seed data for the initial demonstration
+environment, including multiple windows, media assets, and
+window-specific playlists.
+
+## Postman
+
+Import:
+
+``` text
+backend/postman_collection.json
+```
+
+into Postman to test the REST API.
+
+Useful endpoints include:
+
+``` text
+GET    /api/windows
+GET    /api/windows/:id
+GET    /api/media
+POST   /api/media
+POST   /api/windows/:id/playlist
+PUT    /api/windows/:id/playlist/:itemId
+DELETE /api/windows/:id/playlist/:itemId
+POST   /api/sync
+GET    /api/sync/current
+GET    /health
+```
+
+## Design Decisions
+
+### Deterministic playback
+
+Playback position is calculated from time and playlist configuration
+rather than persisted every second. This reduces database write load and
+allows clients to reconstruct state after reconnecting.
+
+### Server-time synchronization
+
+Synchronization uses server-generated timestamps rather than relying on
+every client receiving an immediate "start now" message.
+
+### Non-destructive synchronization
+
+A synchronization event acts as a temporary display override. Stored
+playlists remain unchanged.
+
+### Persistent configuration
+
+Window, media, playlist, and synchronization configuration is persisted
+in PostgreSQL.
+
+## Assumptions and Trade-offs
+
+1.  The normal playback cycle is fixed at 18,000 seconds.
+2.  Playback state is calculated instead of persisted every second.
+3.  Synchronization uses a small future start buffer to account for
+    network latency.
+4.  Synchronization does not mutate underlying playlists.
+5.  Media URLs are stored as references; the application does not host
+    or transcode media files.
+6.  Third-party media availability depends on the external host.
+7.  The current Render free-tier deployment is intended for
+    demonstration/evaluation rather than high-availability production
+    workloads.
+
+## Known Demo Consideration
+
+Some seeded demonstration videos use external media URLs. Their
+availability can depend on the third-party host, browser policies, or
+continued availability of the sample asset.
+
+For production use, media should ideally be hosted on controlled object
+storage/CDN infrastructure.
+
+## Assignment Evaluation Checklist
+
+  -----------------------------------------------------------------------
+  Requirement                         Implementation
+  ----------------------------------- -----------------------------------
+  Multiple display windows            Independent window configurations
+
+  Individual playlists                PostgreSQL-backed playlist items
+
+  5-hour cycle                        Deterministic 18,000-second
+                                      playback
+
+  Continuous playback                 Client playback + deterministic
+                                      state calculation
+
+  Images                              Supported
+
+  Videos                              Supported
+
+  Explicit blank media                Supported
+
+  Dynamic playlist updates            REST + WebSocket
+
+  Temporary synchronization           Server-timestamped override
+
+  Playlist preservation               Non-destructive sync
+
+  Refresh recovery                    `/api/sync/current`
+
+  Persistent storage                  PostgreSQL
+
+  REST API                            Implemented
+
+  WebSocket                           Implemented
+
+  Docker                              Backend and frontend Dockerfiles
+
+  Local orchestration                 Docker Compose
+
+  Cloud deployment                    Render
+
+  API testing                         Postman collection
+  -----------------------------------------------------------------------
+
+## Project Status
+
+**Live and deployed.**
+
+-   Frontend: https://multi-window-media-sequencer-1.onrender.com
+-   Backend: https://multi-window-media-sequencer-2vjr.onrender.com
+-   Health:
+    https://multi-window-media-sequencer-2vjr.onrender.com/health
+
+## Author
+
+**Harshit Mangal**\
+B.Tech --- Information Technology
+
+GitHub: https://github.com/harshit-mangal Repository:
+https://github.com/harshit-mangal/multi-window-media-sequencer
