@@ -1,0 +1,6 @@
+-- 000001_init_schema.down.sql
+
+DROP TABLE IF EXISTS sync_events CASCADE;
+DROP TABLE IF EXISTS playlist_items CASCADE;
+DROP TABLE IF EXISTS media CASCADE;
+DROP TABLE IF EXISTS windows CASCADE;

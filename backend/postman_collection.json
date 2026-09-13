@@ -1,0 +1,247 @@
+{
+  "info": {
+    "_postman_id": "8f88cb01-9a74-4b53-b09e-71cb0a9e224e",
+    "name": "Multi-Window Media Sequencer API",
+    "description": "Production REST API for Multi-Window Media Sequencer with Synchronized Playback Overrides.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Returns backend health status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Windows",
+      "item": [
+        {
+          "name": "Get All Windows",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/windows",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "windows"]
+            },
+            "description": "Fetch list of all configured display windows with their assigned playlists."
+          }
+        },
+        {
+          "name": "Get Window By ID & Playback State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/windows/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "windows", "1"]
+            },
+            "description": "Fetch single window details and its current 5-hour deterministic playback state."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Media",
+      "item": [
+        {
+          "name": "Get All Media",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/media",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media"]
+            },
+            "description": "Retrieve all available media items (images, videos, blank)."
+          }
+        },
+        {
+          "name": "Get Media By ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/media/2",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media", "2"]
+            },
+            "description": "Retrieve specific media asset."
+          }
+        },
+        {
+          "name": "Create Media",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sci-Fi Holo Grid\",\n  \"type\": \"image\",\n  \"url\": \"https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80\",\n  \"duration\": 15\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/media",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media"]
+            },
+            "description": "Add new media asset (image, video, blank)."
+          }
+        },
+        {
+          "name": "Delete Media",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/media/14",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "media", "14"]
+            },
+            "description": "Delete media asset by ID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Playlists",
+      "item": [
+        {
+          "name": "Get Window Playlist",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/windows/1/playlist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "windows", "1", "playlist"]
+            },
+            "description": "Fetch ordered playlist items for Window 1."
+          }
+        },
+        {
+          "name": "Add Item to Window Playlist",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaId\": 4,\n  \"position\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/windows/1/playlist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "windows", "1", "playlist"]
+            },
+            "description": "Append or insert media item into Window 1 playlist and broadcast PLAYLIST_UPDATED."
+          }
+        },
+        {
+          "name": "Update Playlist Item",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"position\": 0,\n  \"mediaId\": 2\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/windows/1/playlist/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "windows", "1", "playlist", "1"]
+            },
+            "description": "Reorder or change media for a playlist item."
+          }
+        },
+        {
+          "name": "Remove Item from Playlist",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/windows/1/playlist/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "windows", "1", "playlist", "1"]
+            },
+            "description": "Remove playlist item and compact ordering."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Synchronization",
+      "item": [
+        {
+          "name": "Start Synchronization",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mediaId\": 2,\n  \"duration\": 20\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/sync",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sync"]
+            },
+            "description": "Triggers temporary sync playback of selected media item across all windows and broadcasts SYNC_START."
+          }
+        },
+        {
+          "name": "Get Current Sync State",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sync/current",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "sync", "current"]
+            },
+            "description": "Returns active sync status, target media, start/end timestamps, and remaining seconds for late joins and refreshes."
+          }
+        }
+      ]
+    }
+  ]
+}

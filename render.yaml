@@ -1,0 +1,36 @@
+services:
+  # PostgreSQL Database
+  - type: postgres
+    name: media-sequencer-db
+    plan: free
+    databaseName: mediasequencer
+    user: postgres
+
+  # Go Backend Service
+  - type: web
+    name: media-sequencer-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: DATABASE_URL
+        fromDatabase:
+          name: media-sequencer-db
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: SYNC_BUFFER_SECONDS
+        value: "2"
+      - key: CYCLE_DURATION_SECONDS
+        value: "18000"
+
+  # React Frontend Static/Web Service
+  - type: web
+    name: media-sequencer-frontend
+    env: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
